@@ -18,17 +18,26 @@ mongoose
 app.set("view engine", "ejs");
 app.set("views", "views");
 app.use(express.urlencoded({ extended: true }));
-app.use(session({
+app.use(
+  session({
     secret: "secret",
     resave: false,
     saveUninitialized: true,
-}))
+  })
+);
 
-app.get("/register", (req, res) => {
+const unauth = (req, res, next) => {
+  if (req.session.user_id) {
+    return res.redirect("/admin");
+  }
+  next();
+};
+
+app.get("/register", unauth, (req, res) => {
   res.render("register");
 });
 
-app.post("/register", async (req, res) => {
+app.post("/register", unauth, async (req, res) => {
   const { username, password } = req.body;
   const salt = bcrypt.genSaltSync(10);
   const hash = bcrypt.hashSync(password, salt);
@@ -43,16 +52,18 @@ app.post("/register", async (req, res) => {
   res.redirect("/");
 });
 
-app.get("/login", (req, res) => {
+app.get("/login", unauth, (req, res) => {
   res.render("login");
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", unauth, async (req, res) => {
   const { username, password } = req.body;
   const user = await User.findOne({ username: username });
   if (user) {
     const isMatch = bcrypt.compareSync(password, user.password);
     if (isMatch) {
+      req.session.user_id = user._id;
+      req.session.username = user.username;
       res.redirect("/admin");
     } else {
       res.redirect("/login");
@@ -63,12 +74,30 @@ app.post("/login", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  const message = "mantap";
+  const message = "HOMEPAGE";
   res.render("home", { message });
 });
 
-app.get("/admin", (req, res) => {
-  res.send("Admin Page");
+const auth = (req, res, next) => {
+  if (!req.session.user_id) {
+    return res.redirect("/login");
+  }
+  next();
+};
+
+app.get("/admin", auth, (req, res) => {
+  res.render("admin");
+});
+
+// Contoh session ngabs
+app.get("/profile/settings", auth, (req, res) => {
+  res.send("PROFILE SETTINGS " + req.session.username);
+});
+
+app.post("/logout", auth, (req, res) => {
+  req.session.destroy(() => {
+    res.redirect("/login");
+  });
 });
 
 app.listen(3000, () => {
